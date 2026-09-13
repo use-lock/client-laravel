@@ -1,0 +1,109 @@
+{
+    "$schema": "https://getcomposer.org/schema.json",
+    "name": "use-lock/client-laravel",
+    "description": "OpenID Connect client for Laravel — log users in through any OIDC provider",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "laravel",
+        "oidc",
+        "openid-connect",
+        "oauth2",
+        "sso",
+        "client"
+    ],
+    "authors": [
+        {
+            "name": "Manuel Christlieb",
+            "email": "manuel@christlieb.eu"
+        }
+    ],
+    "require": {
+        "php": "^8.5",
+        "ext-openssl": "*",
+        "guzzlehttp/guzzle": "^7.9",
+        "illuminate/auth": "^13.0",
+        "illuminate/cache": "^13.0",
+        "illuminate/contracts": "^13.0",
+        "illuminate/database": "^13.0",
+        "illuminate/http": "^13.0",
+        "illuminate/routing": "^13.0",
+        "illuminate/session": "^13.0",
+        "illuminate/support": "^13.0",
+        "lcobucci/jwt": "^5.0",
+        "phpseclib/phpseclib": "^3.0.15"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.0",
+        "laravel/pint": "^1.16",
+        "mockery/mockery": "^1.6",
+        "orchestra/testbench": "^11.0",
+        "pestphp/pest": "^5.0",
+        "pestphp/pest-plugin-laravel": "^5.0",
+        "pestphp/pest-plugin-phpstan": "^5.0",
+        "rector/rector": "^2.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "Lock\\Laravel\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Lock\\Laravel\\Tests\\": "tests/",
+            "Workbench\\App\\": "workbench/app/"
+        }
+    },
+    "homepage": "https://github.com/use-lock/client-laravel",
+    "support": {
+        "issues": "https://github.com/use-lock/client-laravel/issues",
+        "source": "https://github.com/use-lock/client-laravel"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Lock\\Laravel\\OidcClientServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "analyse": "./vendor/bin/phpstan analyse && ./vendor/bin/phpstan analyse -c phpstan-tests.neon.dist",
+        "check": [
+            "@test:lint",
+            "@analyse",
+            "@rector:test",
+            "@test:parallel"
+        ],
+        "lint:fix": "./vendor/bin/pint",
+        "test:lint": "./vendor/bin/pint --test",
+        "rector": "./vendor/bin/rector process",
+        "rector:test": "./vendor/bin/rector process --dry-run",
+        "fix": [
+            "@rector",
+            "@lint:fix"
+        ],
+        "test": "./vendor/bin/pest",
+        "test:feature": "@test --testsuite=Feature",
+        "test:parallel": "./vendor/bin/pest --parallel",
+        "post-autoload-dump": [
+            "@clear",
+            "@prepare"
+        ],
+        "clear": "@php vendor/bin/testbench package:purge-skeleton --ansi",
+        "prepare": "@php vendor/bin/testbench package:discover --ansi",
+        "serve": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php artisan serve --ansi"
+        ],
+        "test:unit": "@test --testsuite=Unit"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "php-http/discovery": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

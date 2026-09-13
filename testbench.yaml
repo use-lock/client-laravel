@@ -1,0 +1,11 @@
+laravel: '@testbench'
+providers:
+  - Lock\Laravel\OidcClientServiceProvider
+workbench:
+  discovers:
+    web: false
+    api: false
+    commands: false
+    components: false
+    views: false
+    factories: false
