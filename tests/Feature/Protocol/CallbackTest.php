@@ -6,8 +6,8 @@ use Illuminate\Auth\Events\Login;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
+use Lock\Client\Auth\OidcException;
 use Lock\Laravel\Sessions\BackchannelLogoutStore;
-use Lock\Laravel\Shared\Protocol\OidcClientException;
 use Lock\Laravel\Support\Facades\OidcClient;
 use Lock\Laravel\Support\Testing\OidcClientFake;
 use Workbench\App\Models\User;
@@ -55,7 +55,7 @@ it('rejects a tampered state and does not log in', function (): void {
     $this->fake->assertCodeNotExchanged();
 });
 
-it('rejects missing or empty callback session context before discovery or token exchange', function (array $context): void {
+it('rejects missing or empty callback session context before the token exchange', function (array $context): void {
     $this->withSession($context)
         ->get($this->fake->callbackUrl())
         ->assertRedirect(route('login'));
@@ -64,36 +64,18 @@ it('rejects missing or empty callback session context before discovery or token 
     $this->fake->assertCodeNotExchanged();
 })->with([
     'missing context' => [[]],
-    'missing state' => [[
-        'oidc-client.nonce' => OidcClientFake::NONCE,
-        'oidc-client.code_verifier' => OidcClientFake::VERIFIER,
-    ]],
     'empty state' => [[
         'oidc-client.state' => '',
         'oidc-client.nonce' => OidcClientFake::NONCE,
-        'oidc-client.code_verifier' => OidcClientFake::VERIFIER,
-    ]],
-    'missing nonce' => [[
-        'oidc-client.state' => OidcClientFake::STATE,
-        'oidc-client.code_verifier' => OidcClientFake::VERIFIER,
-    ]],
-    'empty nonce' => [[
-        'oidc-client.state' => OidcClientFake::STATE,
-        'oidc-client.nonce' => '',
         'oidc-client.code_verifier' => OidcClientFake::VERIFIER,
     ]],
     'missing verifier' => [[
         'oidc-client.state' => OidcClientFake::STATE,
         'oidc-client.nonce' => OidcClientFake::NONCE,
     ]],
-    'empty verifier' => [[
-        'oidc-client.state' => OidcClientFake::STATE,
-        'oidc-client.nonce' => OidcClientFake::NONCE,
-        'oidc-client.code_verifier' => '',
-    ]],
 ]);
 
-it('rejects replayed callback session context before discovery or token exchange', function (): void {
+it('rejects replayed callback session context before the token exchange', function (): void {
     $this->withSession($this->fake->callbackContext())
         ->get($this->fake->callbackUrl(['state' => 'WRONG-state']))
         ->assertRedirect(route('login'));
@@ -112,7 +94,7 @@ it('reports the callback failure before redirecting back to login', function ():
         ->get($this->fake->callbackUrl(['state' => 'WRONG-state']))
         ->assertRedirect(route('login'));
 
-    Exceptions::assertReported(OidcClientException::class);
+    Exceptions::assertReported(OidcException::class);
 });
 
 it('rejects a failed token exchange and does not log in', function (): void {

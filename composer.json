@@ -1,14 +1,13 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
     "name": "use-lock/client-laravel",
-    "description": "OpenID Connect client for Laravel — log users in through any OIDC provider",
+    "description": "Laravel integration for Lock: sign users in, handle back-channel logout and obtain API tokens",
     "type": "library",
     "license": "MIT",
     "keywords": [
         "laravel",
+        "lock",
         "oidc",
-        "openid-connect",
-        "oauth2",
         "sso",
         "client"
     ],
@@ -20,7 +19,6 @@
     ],
     "require": {
         "php": "^8.5",
-        "ext-openssl": "*",
         "guzzlehttp/guzzle": "^7.9",
         "illuminate/auth": "^13.0",
         "illuminate/cache": "^13.0",
@@ -30,8 +28,7 @@
         "illuminate/routing": "^13.0",
         "illuminate/session": "^13.0",
         "illuminate/support": "^13.0",
-        "lcobucci/jwt": "^5.0",
-        "phpseclib/phpseclib": "^3.0.15"
+        "use-lock/client-php": "^0.1"
     },
     "require-dev": {
         "larastan/larastan": "^3.0",

@@ -2,7 +2,7 @@
 declare(strict_types=1);
 use Lock\Laravel\OidcClientServiceProvider;
 
-$domains = ['Authentication', 'Discovery', 'Protocol', 'Sessions', 'Shared', 'Support', 'Tokens'];
+$domains = ['Authentication', 'Protocol', 'Sessions', 'Shared', 'Support', 'Tokens'];
 
 it('names every domain the package ships', function () use ($domains): void {
     $directories = array_map(basename(...), glob(__DIR__.'/../../src/*', GLOB_ONLYDIR) ?: []);

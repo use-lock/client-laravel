@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
-use Lock\Laravel\Discovery\OidcDiscovery;
+use Lock\Client\Realm;
 use Lock\Laravel\Support\Facades\OidcClient;
 use Lock\Laravel\Support\Testing\OidcClientFake;
-use Lock\Laravel\Tokens\Validation\IdTokenValidator;
-use Lock\Laravel\Tokens\Validation\LogoutTokenValidator;
 use Workbench\App\Models\User;
 
 it('blocks unstubbed requests from reaching the network', function (): void {
@@ -20,31 +18,23 @@ it('blocks unstubbed requests from reaching the network', function (): void {
         ->toThrow(RuntimeException::class, 'unrelated.example');
 });
 
-it('mints an id_token the real validator accepts', function (): void {
+it('mints id and logout tokens the realm accepts', function (): void {
     $fake = OidcClient::fake();
+    $realm = app(Realm::class);
 
-    $claims = app(IdTokenValidator::class)->validate($fake->idToken(['sub' => '42']), OidcClientFake::NONCE);
-
-    expect($claims['sub'])->toBe('42')
-        ->and($claims['iss'])->toBe('https://oidc.test');
+    expect($realm->idTokens()->validate($fake->idToken(['sub' => '42']), OidcClientFake::NONCE))
+        ->toMatchArray(['sub' => '42', 'iss' => 'https://oidc.test'])
+        ->and($realm->logoutTokens()->validate($fake->logoutToken(['sub' => '42', 'sid' => 's1'])))
+        ->toMatchArray(['sub' => '42', 'sid' => 's1']);
 });
 
-it('mints a logout_token the real validator accepts', function (): void {
-    $fake = OidcClient::fake();
-
-    $result = app(LogoutTokenValidator::class)->validate($fake->logoutToken(['sub' => '42', 'sid' => 's1']));
-
-    expect($result['sid'])->toBe('s1')
-        ->and($result['sub'])->toBe('42');
-});
-
-it('honors an issuer configured before fake() even when discovery was already resolved', function (): void {
+it('honors an issuer configured before fake() even when the realm was already resolved', function (): void {
     config()->set('oidc-client.issuer', 'https://custom.test');
-    app(OidcDiscovery::class);
+    app(Realm::class);
 
     $fake = OidcClient::fake();
 
-    $claims = app(IdTokenValidator::class)->validate($fake->idToken(), OidcClientFake::NONCE);
+    $claims = app(Realm::class)->idTokens()->validate($fake->idToken(), OidcClientFake::NONCE);
     expect($claims['iss'])->toBe('https://custom.test');
 });
 
@@ -62,30 +52,11 @@ it('mints tokens at the frozen Carbon test time', function (): void {
         ->and((int) $decode($fake->logoutToken())['iat'])->toBe($frozen);
 });
 
-it('asserts a user is logged in on the configured guard', function (): void {
+it('asserts the login and the code exchange after a successful callback', function (): void {
     $fake = OidcClient::fake();
     $user = User::create(['name' => 'M', 'email' => 'm@example.com', 'password' => 'secret']);
 
     $this->withSession($fake->callbackContext())->get($fake->loginAs($user));
 
-    $fake->assertLoggedIn($user);
-});
-
-it('asserts the code exchange fired after a successful callback', function (): void {
-    $fake = OidcClient::fake();
-    $user = User::create(['name' => 'M', 'email' => 'm@example.com', 'password' => 'secret']);
-
-    $this->withSession($fake->callbackContext())->get($fake->loginAs($user));
-
-    $fake->assertCodeExchanged();
-});
-
-it('keeps assertCodeExchanged bound to the request history when a customizer is applied after the exchange', function (): void {
-    $fake = OidcClient::fake();
-    $user = User::create(['name' => 'M', 'email' => 'm@example.com', 'password' => 'secret']);
-    $this->withSession($fake->callbackContext())->get($fake->loginAs($user));
-
-    $fake->withoutEndSessionEndpoint();
-
-    $fake->assertCodeExchanged();
+    $fake->assertLoggedIn($user)->assertCodeExchanged();
 });

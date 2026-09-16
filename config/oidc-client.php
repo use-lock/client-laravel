@@ -5,14 +5,12 @@ declare(strict_types=1);
 return [
     /*
     |--------------------------------------------------------------------------
-    | OIDC client
+    | Lock client
     |--------------------------------------------------------------------------
     |
-    | This package turns a Laravel app into an OpenID Connect client: it
-    | drives the Authorization-Code + PKCE flow against any OIDC provider,
-    | validates the returned id_token against the provider's JWKS, and logs the
-    | resolved user into the configured guard. For self-SSO, point `issuer` at
-    | your own use-lock/server provider.
+    | Signs users in through a Lock realm with the authorization code flow and
+    | PKCE, and logs the resolved user into the configured guard. `issuer` is
+    | the realm URL. For self-SSO, point it at the app's own realm.
     |
     */
 
@@ -24,6 +22,9 @@ return [
 
     'client_secret' => env('OIDC_CLIENT_SECRET'),
 
+    // client_secret_post or client_secret_basic, as registered for the client.
+    'token_endpoint_auth_method' => env('OIDC_TOKEN_ENDPOINT_AUTH_METHOD', 'client_secret_post'),
+
     // Unset, the app's own login.callback route.
     'redirect_uri' => env('OIDC_REDIRECT_URI'),
 
@@ -34,30 +35,6 @@ return [
     'redirect_after_login' => env('OIDC_HOME', '/dashboard'),
 
     'post_logout_redirect_uri' => env('OIDC_POST_LOGOUT_REDIRECT_URI'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Discovery cache
-    |--------------------------------------------------------------------------
-    |
-    | The provider's discovery document and JWKS are cached for this many
-    | seconds to avoid an HTTP round-trip on every authentication request.
-    |
-    */
-
-    'discovery_cache_ttl' => (int) env('OIDC_DISCOVERY_TTL', 3600),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Clock skew
-    |--------------------------------------------------------------------------
-    |
-    | Allowed leeway, in seconds, when validating the id_token `exp`/`nbf`/`iat`
-    | claims.
-    |
-    */
-
-    'leeway' => (int) env('OIDC_LEEWAY', 60),
 
     /*
     |--------------------------------------------------------------------------

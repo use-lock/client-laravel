@@ -6,8 +6,8 @@ namespace Lock\Laravel\Protocol\Http\Controllers;
 
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Lock\Client\Auth\OidcException;
 use Lock\Laravel\Protocol\AuthorizationFlow;
-use Lock\Laravel\Shared\Protocol\OidcClientException;
 use Lock\Laravel\Shared\Routing\Handler;
 
 class OidcCallbackController
@@ -16,7 +16,7 @@ class OidcCallbackController
     {
         try {
             return $authorizationFlow->handleCallback($request);
-        } catch (OidcClientException $e) {
+        } catch (OidcException $e) {
             report($e);
 
             return redirect()->route(Handler::Login->value)->withErrors([

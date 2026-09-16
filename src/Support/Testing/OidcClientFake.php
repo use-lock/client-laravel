@@ -9,26 +9,21 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
-use Lock\Laravel\Discovery\OidcDiscovery;
-use Lock\Laravel\Protocol\AuthorizationFlow;
+use Lock\Client\Auth\Testing\FakeProvider;
+use Lock\Client\Realm;
 use Lock\Laravel\Sessions\BackchannelLogoutStore;
 use Lock\Laravel\Shared\Routing\Handler;
 use Lock\Laravel\Support\Facades\OidcClient;
-use Lock\Laravel\Tokens\Validation\IdTokenValidator;
-use Lock\Laravel\Tokens\Validation\JwksKeyResolver;
-use Lock\Laravel\Tokens\Validation\LogoutTokenValidator;
 use PHPUnit\Framework\Assert;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * A fake OpenID provider for client tests. Install with
- * {@see OidcClient::fake()}: it stubs the
- * issuer's discovery, JWKS, token, and end-session endpoints against a test RSA
- * keypair and returns this object for token minting, callback seeding, and flow
- * assertions.
+ * A fake Lock realm for client tests. Install with {@see OidcClient::fake()}:
+ * it stubs the realm's JWKS, token and logout endpoints against a test RSA key
+ * and returns this object for token minting, callback seeding and assertions.
  */
 class OidcClientFake
 {
@@ -36,36 +31,38 @@ class OidcClientFake
 
     public const string NONCE = 'oidc-fake-nonce';
 
-    public const string VERIFIER = 'oidc-fake-verifier';
+    public const string VERIFIER = 'oidc-fake-code-verifier-of-at-least-43-characters';
 
     public const string SID = 'oidc-fake-sid';
 
-    public const string KID = 'oidc-fake-key';
-
     private readonly string $issuer;
+
+    /**
+     * Unique per fake, so JWKS cached for an earlier fake is refetched.
+     */
+    private readonly string $kid;
 
     private string $clientId;
 
     private string $subject = 'oidc-fake-subject';
 
-    private bool $endSessionEnabled = true;
-
     private ?int $failTokenStatus = null;
 
-    private ?FakeOidcProvider $rogueProvider = null;
+    private ?FakeProvider $rogueProvider = null;
 
     /** @var array<string, mixed> */
     private array $defaultClaims = [];
 
-    public function __construct(private readonly FakeOidcProvider $provider)
+    public function __construct(private readonly FakeProvider $provider)
     {
+        $this->kid = 'oidc-fake-'.Str::random(8);
         $this->issuer = rtrim((string) (config('oidc-client.issuer') ?: 'https://oidc.test'), '/');
         $this->clientId = (string) (config('oidc-client.client_id') ?: 'oidc-client-test');
     }
 
     public static function start(): self
     {
-        $fake = new self(new FakeOidcProvider);
+        $fake = new self(new FakeProvider);
         $fake->reset();
         $fake->installStub();
 
@@ -84,13 +81,7 @@ class OidcClientFake
     {
         $this->clientId = $clientId;
         config()->set('oidc-client.client_id', $clientId);
-
-        return $this;
-    }
-
-    public function withoutEndSessionEndpoint(): static
-    {
-        $this->endSessionEnabled = false;
+        app()->forgetInstance(Realm::class);
 
         return $this;
     }
@@ -104,7 +95,7 @@ class OidcClientFake
 
     public function withInvalidSignature(): static
     {
-        $this->rogueProvider = new FakeOidcProvider;
+        $this->rogueProvider = new FakeProvider;
 
         return $this;
     }
@@ -158,7 +149,7 @@ class OidcClientFake
     {
         $signer = $this->rogueProvider ?? $this->provider;
 
-        return $signer->idToken(array_merge($this->defaultIdTokenClaims(), $this->defaultClaims, $claims), self::KID);
+        return $signer->idToken(array_merge($this->defaultIdTokenClaims(), $this->defaultClaims, $claims), $this->kid);
     }
 
     /**
@@ -175,7 +166,7 @@ class OidcClientFake
             'exp' => Carbon::now()->getTimestamp() + 300,
             'jti' => 'oidc-fake-jti',
             'events' => ['http://schemas.openid.net/event/backchannel-logout' => (object) []],
-        ], $claims), self::KID);
+        ], $claims), $this->kid);
     }
 
     /**
@@ -199,21 +190,13 @@ class OidcClientFake
         config()->set('oidc-client.issuer', $this->issuer);
         config()->set('oidc-client.client_id', $this->clientId);
 
-        foreach ([OidcDiscovery::class, JwksKeyResolver::class, AuthorizationFlow::class, IdTokenValidator::class, LogoutTokenValidator::class] as $abstract) {
-            app()->forgetInstance($abstract);
-        }
-
-        Cache::forget('oidc-client:discovery:'.$this->issuer);
-        Cache::forget('oidc-client:jwks:'.$this->issuer);
+        app()->forgetInstance(Realm::class);
     }
 
     /**
      * Register a single closure stub that reads live state from $this at
-     * request time. Unlike Http::fake([...]) with a fixed URL map, this
-     * survives customizers called after a request has already resolved the
-     * HTTP factory (AuthorizationFlow and OidcDiscovery constructor-inject it),
-     * so a customizer applied between two requests in the same test still
-     * takes effect on the second request.
+     * request time, so a customizer applied between two requests in the same
+     * test still takes effect on the second request.
      */
     private function installStub(): void
     {
@@ -223,37 +206,17 @@ class OidcClientFake
     private function respondTo(Request $request): ?PromiseInterface
     {
         return match ($request->url()) {
-            $this->issuer.'/.well-known/openid-configuration' => Http::response($this->discoveryDocument()),
-            $this->issuer.'/.well-known/jwks.json' => Http::response(['keys' => $this->provider->rsaJwks(self::KID)]),
+            $this->issuer.'/.well-known/jwks.json' => Http::response($this->provider->jwks($this->kid)),
             $this->issuer.'/oauth/token' => $this->tokenResponse(),
             $this->issuer.'/oauth/logout' => Http::response('', 200),
             default => null,
         };
     }
 
-    /**
-     * @return array<string, mixed>
-     */
-    private function discoveryDocument(): array
-    {
-        $discovery = [
-            'issuer' => $this->issuer,
-            'authorization_endpoint' => $this->issuer.'/oauth/authorize',
-            'token_endpoint' => $this->issuer.'/oauth/token',
-            'jwks_uri' => $this->issuer.'/.well-known/jwks.json',
-        ];
-
-        if ($this->endSessionEnabled) {
-            $discovery['end_session_endpoint'] = $this->issuer.'/oauth/logout';
-        }
-
-        return $discovery;
-    }
-
     private function tokenResponse(): PromiseInterface
     {
         if ($this->failTokenStatus !== null) {
-            return Http::response([], $this->failTokenStatus);
+            return Http::response(['error' => 'invalid_grant'], $this->failTokenStatus);
         }
 
         return Http::response([

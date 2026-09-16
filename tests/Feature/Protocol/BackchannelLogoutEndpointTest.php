@@ -6,14 +6,15 @@ namespace Lock\Laravel\Tests\Feature\Protocol;
 
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Session;
+use Lock\Client\Auth\OidcException;
 use Lock\Laravel\Sessions\BackchannelLogoutStore;
-use Lock\Laravel\Shared\Protocol\OidcClientException;
-use Lock\Laravel\Support\Testing\FakeOidcProvider;
+use Lock\Laravel\Support\Facades\OidcClient;
+use Lock\Laravel\Support\Testing\OidcClientFake;
 use Lock\Laravel\Tests\Support\BackchannelLogoutEnabledTestCase;
 
 class BackchannelLogoutEndpointTest extends BackchannelLogoutEnabledTestCase
 {
-    private FakeOidcProvider $provider;
+    private OidcClientFake $fake;
 
     private BackchannelLogoutStore $store;
 
@@ -21,24 +22,13 @@ class BackchannelLogoutEndpointTest extends BackchannelLogoutEnabledTestCase
     {
         parent::setUp();
 
-        config()->set('oidc-client.issuer', 'https://id.example.com');
-        config()->set('oidc-client.client_id', 'client-123');
-        $this->provider = new FakeOidcProvider;
+        $this->fake = OidcClient::fake();
         $this->store = app(BackchannelLogoutStore::class);
-        fakeIssuerEndpoints($this->provider);
-    }
-
-    /**
-     * @param  array<string, mixed>  $overrides
-     */
-    private function validLogoutToken(array $overrides = []): string
-    {
-        return $this->provider->logoutToken(logoutTokenClaims($overrides), 'key-1');
     }
 
     public function test_it_accepts_a_valid_logout_token_marks_the_sid_and_returns_200_no_store(): void
     {
-        $response = $this->post('/oidc/backchannel-logout', ['logout_token' => $this->validLogoutToken()]);
+        $response = $this->post('/oidc/backchannel-logout', ['logout_token' => $this->fake->logoutToken(['sid' => 'sess-abc'])]);
 
         $response->assertOk()->assertHeader('Cache-Control', 'no-store, private');
         $this->assertTrue($this->store->isRevoked('sess-abc'));
@@ -49,7 +39,7 @@ class BackchannelLogoutEndpointTest extends BackchannelLogoutEnabledTestCase
         Session::getHandler()->write('the-session-id', 'session-payload');
         $this->store->registerSession('sess-abc', 'the-session-id');
 
-        $this->post('/oidc/backchannel-logout', ['logout_token' => $this->validLogoutToken()])->assertOk();
+        $this->post('/oidc/backchannel-logout', ['logout_token' => $this->fake->logoutToken(['sid' => 'sess-abc'])])->assertOk();
 
         $this->assertSame('', Session::getHandler()->read('the-session-id'));
         $this->assertNull($this->store->pullSessionId('sess-abc'));
@@ -57,7 +47,7 @@ class BackchannelLogoutEndpointTest extends BackchannelLogoutEnabledTestCase
 
     public function test_it_rejects_a_replayed_logout_token_jti_with_400(): void
     {
-        $token = $this->validLogoutToken(['jti' => 'jti-replayed']);
+        $token = $this->fake->logoutToken(['jti' => 'jti-replayed']);
 
         $this->post('/oidc/backchannel-logout', ['logout_token' => $token])->assertOk();
 
@@ -65,19 +55,14 @@ class BackchannelLogoutEndpointTest extends BackchannelLogoutEnabledTestCase
             ->assertStatus(400)->assertJson(['error' => 'invalid_request']);
     }
 
-    public function test_it_rejects_an_invalid_logout_token_with_400_and_revokes_nothing(): void
-    {
-        $this->post('/oidc/backchannel-logout', ['logout_token' => 'not-a-jwt'])
-            ->assertStatus(400)->assertJson(['error' => 'invalid_request']);
-        $this->assertFalse($this->store->isRevoked('sess-abc'));
-    }
-
-    public function test_it_reports_the_rejected_logout_token_before_responding(): void
+    public function test_it_reports_an_invalid_logout_token_answers_400_and_revokes_nothing(): void
     {
         Exceptions::fake();
 
-        $this->post('/oidc/backchannel-logout', ['logout_token' => 'not-a-jwt'])->assertStatus(400);
+        $this->post('/oidc/backchannel-logout', ['logout_token' => 'not-a-jwt'])
+            ->assertStatus(400)->assertJson(['error' => 'invalid_request']);
 
-        Exceptions::assertReported(OidcClientException::class);
+        Exceptions::assertReported(OidcException::class);
+        $this->assertFalse($this->store->isRevoked(OidcClientFake::SID));
     }
 }
