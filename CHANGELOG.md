@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/use-lock/client-laravel/compare/0.2.0...0.3.0) (2026-09-25)
+
+
+### Features
+
+* require use-lock/client-php 0.2 ([#3](https://github.com/use-lock/client-laravel/issues/3)) ([5c763d1](https://github.com/use-lock/client-laravel/commit/5c763d16aaed0a74c1cd030dbb8bc7ce31831259))
+
 ## [0.2.0](https://github.com/use-lock/client-laravel/compare/0.1.0...0.2.0) (2026-09-16)
 
 
