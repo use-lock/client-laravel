@@ -113,6 +113,11 @@ scopes. The user token exchange renews expired session tokens with the refresh t
 and caches exchanged tokens in the session; `forget()` clears them. Machine tokens
 are cached in the application cache.
 
+A failed grant throws `Lock\Client\Auth\ProviderException`. Check `isTransient()`
+before discarding the session: it is true when the provider could not be reached,
+failed, or throttled the request, and false when it rejected the grant (its `status`
+and OAuth `error` tell which).
+
 ## Testing your application
 
 ```php
